@@ -63,27 +63,25 @@ class Fretboard:
 
     def draw_guide(self, frame: np.ndarray, geom: FretboardGeom,
                    active_cell: Optional[tuple[int, int]] = None) -> None:
-        h, w = frame.shape[:2]
+        """Single-note lanes. Labels are drawn by the overlay with the CJK face.
+
+        No closed debug slab and no Hershey text. The active cell is a soft fill.
+        """
         x0, y0 = map(int, geom.origin)
         x1 = int(x0 + geom.fret_spacing * (geom.n_frets + 1))
         y1 = int(y0 + geom.string_spacing * geom.n_strings)
-        shade = frame.copy()
-        cv2.rectangle(shade, (x0 - 9, y0 - 9), (x1 + 9, y1 + 8), (15, 29, 39), -1)
-        cv2.addWeighted(shade, .62, frame, .38, 0, frame)
         if active_cell is not None:
             s, f = active_cell
+            shade = frame.copy()
             a = (int(x0 + f * geom.fret_spacing), int(y0 + s * geom.string_spacing))
             b = (int(x0 + (f + 1) * geom.fret_spacing), int(y0 + (s + 1) * geom.string_spacing))
-            cv2.rectangle(frame, a, b, (47, 102, 85), -1)
+            cv2.rectangle(shade, a, b, (151, 220, 61), -1)
+            cv2.addWeighted(shade, .28, frame, .72, 0, frame)
+        fret_bgr = (82, 64, 49)
+        string_bgr = (232, 183, 142)
         for f in range(geom.n_frets + 2):
             xx = int(x0 + f * geom.fret_spacing)
-            cv2.line(frame, (xx, y0), (xx, y1), (104, 124, 141), 3 if f == 1 else 1, cv2.LINE_AA)
+            cv2.line(frame, (xx, y0), (xx, y1), fret_bgr, 1, cv2.LINE_AA)
         for s in range(geom.n_strings):
             yy = int(y0 + (s + .5) * geom.string_spacing)
-            cv2.line(frame, (x0, yy), (x1, yy), (161, 174, 180), max(1, 3 - s // 2), cv2.LINE_AA)
-            cv2.putText(frame, config.STRING_NAMES[s], (x0 - 38, yy + 5), cv2.FONT_HERSHEY_SIMPLEX,
-                        .39, (197, 209, 220), 1, cv2.LINE_AA)
-        for f in range(geom.n_frets + 1):
-            xx = int(x0 + (f + .5) * geom.fret_spacing)
-            cv2.putText(frame, "OPEN" if f == 0 else str(f), (xx - (15 if f == 0 else 4), y0 - 16),
-                        cv2.FONT_HERSHEY_SIMPLEX, .40, (200, 214, 226), 1, cv2.LINE_AA)
+            cv2.line(frame, (x0, yy), (x1, yy), string_bgr, 1, cv2.LINE_AA)

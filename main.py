@@ -19,6 +19,7 @@ from src.hand_tracker import HandResult, HandTracker, ensure_model
 from src.overlay import Overlay, CANVAS_W, CANVAS_H
 from src.song_player import SongPlayer
 from src.strum_detector import StrumDetector
+from src.theme import WINDOW_TITLE, assert_ascii_window_title
 
 
 def monotonic_ms() -> int:
@@ -73,11 +74,32 @@ def parser() -> argparse.ArgumentParser:
     ap.add_argument('--height',type=int,default=config.FRAME_HEIGHT)
     ap.add_argument('--smoke-test',action='store_true',help='render 1 demo frame and write artifacts/smoke_test.png, no UI')
     ap.add_argument('--selftest', action='store_true', help='verify bundled assets and tracking without camera/audio output')
+    ap.add_argument('--preview', action='store_true', help='write headless UI PNGs under artifacts/previews')
     return ap
+
+
+def set_ascii_window_caption(title: str) -> None:
+    """Keep the HighGUI caption on the ASCII window created by namedWindow.
+
+    On Windows, HighGUI sets the caption with the ANSI API, so a Chinese string
+    becomes mojibake. Do not pass non-ASCII text to namedWindow or setWindowTitle.
+    A future Unicode caption must go through SetWindowTextW only after this
+    ASCII window exists (FindWindowW matches WINDOW_TITLE).
+    """
+    title = assert_ascii_window_title(title)
+    if os.name != 'nt':
+        return
+    import ctypes
+    hwnd = ctypes.windll.user32.FindWindowW(None, title)
+    if hwnd:
+        ctypes.windll.user32.SetWindowTextW(hwnd, title)
 
 
 def selftest() -> None:
     """Exercise native dependencies and bundled resources without devices/network."""
+    title = assert_ascii_window_title(WINDOW_TITLE)
+    if title != 'AirGuitar Vision':
+        raise RuntimeError(f'Window title must be the ASCII caption, got {title!r}')
     import mediapipe  # noqa: F401 -- verify the critical native module imports
     import pygame
     import wave
@@ -135,11 +157,12 @@ def run(args: argparse.Namespace) -> None:
     strummer=StrumDetector(config.V_TH,config.COOLDOWN_MS,config.APPROACH_MARGIN)
     overlay=Overlay()
     song_player=SongPlayer()
-    window_name="空气吉他 - 中文视觉演奏台"
+    window_name = assert_ascii_window_title(WINDOW_TITLE)
     pending_actions: list[str] = []
     fullscreen=False
     if not args.smoke_test:
         cv2.namedWindow(window_name,cv2.WINDOW_NORMAL)
+        set_ascii_window_caption(window_name)
         cv2.resizeWindow(window_name,*fit_desktop_window())
         def on_mouse(event:int,x:int,y:int,flags:int,param:object)->None:
             if event==cv2.EVENT_LBUTTONUP:
@@ -217,7 +240,7 @@ def run(args: argparse.Namespace) -> None:
                                mode=mode,active_cell=stable_cell,fps=fps,confidence=confidence,
                                last_event=event_label if start<event_until else '',
                                demo=demo,current_gesture=gesture_index,role_swap=swap,sound_muted=muted,
-                               song_player=song_player)
+                               song_player=song_player,fullscreen=fullscreen)
             if args.smoke_test:
                 dest=config.PROJECT_DIR/'artifacts'/'smoke_test.png';dest.parent.mkdir(exist_ok=True)
                 if not cv2.imwrite(str(dest),frame):raise RuntimeError('Unable to write smoke_test.png')
@@ -309,11 +332,25 @@ def run(args: argparse.Namespace) -> None:
         cv2.destroyAllWindows()
 
 
+def _render_ui_previews() -> None:
+    import importlib.util
+    path = Path(__file__).resolve().parent / 'tools' / 'render_ui_preview.py'
+    spec = importlib.util.spec_from_file_location('airguitar_ui_preview', path)
+    if spec is None or spec.loader is None:
+        raise RuntimeError(f'Unable to load preview renderer: {path}')
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    for dest in module.render_ui_previews():
+        print(f'[OK] {dest}')
+
+
 def main(argv: list[str]|None=None) -> int:
     args=parser().parse_args(argv)
     try:
         if args.selftest:
             selftest()
+        elif args.preview:
+            _render_ui_previews()
         else:
             run(args)
         return 0

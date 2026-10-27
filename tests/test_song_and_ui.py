@@ -54,13 +54,31 @@ def test_song_finishes_and_can_replay():
 
 def test_live_ui_mouse_buttons_and_font_available():
     o=Overlay()
-    assert o.hit_test(1100,750)=='play_pause'
-    assert o.hit_test(1320,765)=='stop'
-    assert o.hit_test(1090,636)=='twinkle'
-    assert o.hit_test(1260,637)=='ode'
-    assert o.hit_test(1100,251)=='mode'
-    assert o.hit_test(500,450) is None
-    assert CANVAS_W>=1400 and CANVAS_H>=850
+    for name in ('play_pause', 'stop', 'twinkle', 'ode', 'mode', 'mute', 'fullscreen'):
+        x0, y0, x1, y1 = o.buttons[name]
+        assert o.hit_test((x0 + x1) // 2, (y0 + y1) // 2) == name
+    # Hero center is the camera, not a control.
+    assert o.hit_test(24 + 476, 88 + 322) is None
+    assert CANVAS_W == 1440 and CANVAS_H == 900
+
+
+def test_window_title_is_ascii_only():
+    import inspect
+    from main import WINDOW_TITLE, run, set_ascii_window_caption
+    from src.theme import assert_ascii_window_title
+    assert assert_ascii_window_title(WINDOW_TITLE) == 'AirGuitar Vision'
+    assert WINDOW_TITLE.isascii()
+    source = inspect.getsource(run)
+    assert 'namedWindow' in source and 'WINDOW_TITLE' in source
+    assert '空气吉他 - 中文视觉演奏台' not in source
+    assert 'setWindowTitle' not in source
+    caption = inspect.getsource(set_ascii_window_caption)
+    assert 'SetWindowTextW' in caption and 'cv2.namedWindow' not in caption
+    try:
+        assert_ascii_window_title('空气吉他')
+    except ValueError:
+        return
+    raise AssertionError('Chinese window titles must be rejected')
 
 
 def test_song_previews_are_real_wav_files():
