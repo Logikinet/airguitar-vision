@@ -1,0 +1,11 @@
+# Packaging target: 64-bit Python 3.11 on Windows 10 or 11.
+# MediaPipe requires contrib, which supplies cv2; do not install two cv2 wheels.
+opencv-contrib-python==4.11.0.86
+mediapipe==0.10.21
+numpy==1.26.4
+pygame==2.6.1
+Pillow==11.1.0  # Windows Chinese interface rendering (system fonts)
+pytest==8.3.5
+# MediaPipe transitives: newer JAX releases require NumPy 2, incompatible above.
+jax==0.4.30
+jaxlib==0.4.30

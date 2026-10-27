@@ -1,0 +1,76 @@
+name: build-windows
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: windows-latest
+    timeout-minutes: 30
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          architecture: x64
+          cache: pip
+          cache-dependency-path: |
+            requirements.txt
+            requirements-build.txt
+      - name: Install dependencies
+        run: python -m pip install -r requirements.txt -r requirements-build.txt
+      - name: Check dependency compatibility
+        run: python -m pip check
+      - name: Install Chinese UI font for tests
+        run: |
+          # Overlay and --selftest look up these files. windows-latest is an
+          # English image and does not ship Microsoft YaHei / SimHei / SimSun.
+          $candidates = @(
+            'C:\Windows\Fonts\msyh.ttc',
+            'C:\Windows\Fonts\msyhbd.ttc',
+            'C:\Windows\Fonts\simhei.ttf',
+            'C:\Windows\Fonts\simsun.ttc'
+          )
+          foreach ($path in $candidates) {
+            if (Test-Path -LiteralPath $path) {
+              Write-Host "Chinese font already present: $path"
+              exit 0
+            }
+          }
+          # Per-user fonts dir: C:\Windows\Fonts is owned by TrustedInstaller.
+          $destDir = Join-Path $env:LOCALAPPDATA 'Microsoft\Windows\Fonts'
+          New-Item -ItemType Directory -Force -Path $destDir | Out-Null
+          $dest = Join-Path $destDir 'simhei.ttf'
+          $url = 'https://github.com/adobe-fonts/source-han-sans/raw/release/SubsetOTF/CN/SourceHanSansCN-Regular.otf'
+          $ProgressPreference = 'SilentlyContinue'
+          Invoke-WebRequest -Uri $url -OutFile $dest -UseBasicParsing
+          $size = (Get-Item -LiteralPath $dest).Length
+          if ($size -lt 1000000) { throw "Chinese font download looks incomplete ($size bytes)" }
+          Write-Host "Saved Source Han Sans CN as $dest ($size bytes)"
+      - name: Run tests
+        run: python -m pytest -q
+      - name: Download official hand model for offline bundle
+        run: python tools/download_model.py
+      - name: Build onefile executable
+        run: python -m PyInstaller --noconfirm --clean AirGuitarVision.spec
+      - name: Smoke-test executable outside source directory
+        timeout-minutes: 5
+        run: |
+          $exe = Join-Path $env:GITHUB_WORKSPACE 'dist/AirGuitarVision.exe'
+          Set-Location $env:RUNNER_TEMP
+          & $exe --selftest
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Upload Windows executable
+        uses: actions/upload-artifact@v4
+        with:
+          name: airguitar-vision-windows
+          path: dist/AirGuitarVision.exe
+          if-no-files-found: error

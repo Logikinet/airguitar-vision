@@ -1,0 +1,23 @@
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+venv/
+dist/
+build/
+*.egg-info/
+.pytest_cache/
+*.spec.bak
+.spec.bak
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+Desktop.ini
+# Downloaded for packaging; not source-controlled.
+assets/hand_landmarker.task
+assets/hand_landmarker.part
+artifacts/
