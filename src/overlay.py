@@ -173,6 +173,52 @@ def display_copy(text: str) -> str:
     return text.replace(' · ', ' / ').replace('·', ' / ')
 
 
+# Clear rows between the title's descender ink and the subtitle's ascender ink.
+_TITLE_SUB_GAP = 8
+_BRAND_TITLE = '空气吉他'
+_BRAND_SUB = '计算机视觉 / 实时交互演奏台'
+
+
+def _lockup_tops(title_font, sub_font, header: tuple[int, int, int, int],
+                 min_gap: int = _TITLE_SUB_GAP) -> tuple[int, int]:
+    """Top-left anchors so the two baselines clear by at least ``min_gap`` px.
+
+    Ascent is the baseline under Pillow's top-left anchor. The painted
+    descender is ``bbox.bottom - ascent`` and the painted ascender is
+    ``ascent - bbox.top``. CJK em-boxes are taller than these glyphs, so
+    the gap is the ink, not the full descent. ``min_gap`` stays in 6..8
+    when the header cannot hold a larger one.
+    """
+    title_box = title_font.getbbox(_BRAND_TITLE)
+    sub_box = sub_font.getbbox(_BRAND_SUB)
+    title_ascent, title_descent = title_font.getmetrics()
+    sub_ascent = sub_font.getmetrics()[0]
+    # Painted ink first. Declared descent/ascent is only the fallback when a
+    # face reports no glyph box (the em often includes blank leading).
+    ink_descender = title_box[3] - title_ascent
+    ink_ascender = sub_ascent - sub_box[1]
+    title_descender = ink_descender if ink_descender > 0 else max(0, title_descent)
+    sub_ascender = ink_ascender if ink_ascender > 0 else max(0, sub_ascent)
+    hy, hh = header[1], header[3]
+    pad = 3
+    inner_top = hy + pad
+    inner_bot = hy + hh - pad
+    title_ink = title_box[3] - title_box[1]
+    sub_ink = sub_box[3] - sub_box[1]
+    room = inner_bot - inner_top
+    gap = min_gap
+    if title_ink + gap + sub_ink > room:
+        gap = max(6, room - title_ink - sub_ink)
+    slack = max(0, room - (title_ink + gap + sub_ink))
+    ink_top = inner_top + slack // 2
+    title_y = int(round(ink_top - title_box[1]))
+    # sub baseline = title baseline + descender ink + gap + ascender ink
+    title_baseline = title_y + title_ascent
+    sub_baseline = title_baseline + title_descender + gap + sub_ascender
+    sub_y = int(round(sub_baseline - sub_ascent))
+    return title_y, sub_y
+
+
 def _mmss(seconds: float) -> str:
     whole = max(0, int(seconds))
     return f'{whole // 60:02d}:{whole % 60:02d}'
@@ -204,7 +250,7 @@ class Overlay:
         return float(self._font(size).getlength(text))
 
     def _place_header(self, *, camera: str, muted: bool, fullscreen: bool, fps: float) -> dict[str, tuple]:
-        """Right cluster, vertically centered in the 56px header. Returns draw specs."""
+        """Right cluster, vertically centered in the header. Returns draw specs."""
         audio = '已静音' if muted else '音频开'
         if camera == 'off':
             cam_label, cam_fill, cam_ink, cam_dot = '无摄像头', 'danger_fill', 'danger', 'danger'
@@ -215,7 +261,9 @@ class Overlay:
         fps_label = f'{fps:.0f} fps'
         body = 16
         right = HEADER[0] + HEADER[2] - 16
-        y0, y1 = 30, 58
+        pill_h = 28
+        y0 = HEADER[1] + (HEADER[3] - pill_h) // 2
+        y1 = y0 + pill_h
         gap = 8
 
         def pill_w(label: str, dot: bool) -> int:
@@ -237,7 +285,7 @@ class Overlay:
         self.buttons['fullscreen'] = full
         return {
             'camera': (cam, cam_label, cam_fill, cam_ink, cam_dot),
-            'fps': (fps_x, fps_label),
+            'fps': (fps_x, fps_label, y0 + pill_h / 2),
             'audio': (audio_box, audio, muted),
             'full': (full, fullscreen),
         }
@@ -372,13 +420,16 @@ class Overlay:
 
     def _header(self, pen, header) -> None:
         pen.rounded_rectangle(xyxy(HEADER), radius=12, fill=rgb('surface'), outline=rgb('border'), width=1)
-        self._brand(pen, 40, 26)
-        pen.text((88, 22), '空气吉他', font=self.display, fill=rgb('text'))
-        pen.text((88, 50), '计算机视觉 / 实时交互演奏台', font=self._font(15), fill=rgb('text2'))
+        mark = 36
+        brand_y = HEADER[1] + (HEADER[3] - mark) // 2
+        self._brand(pen, 40, brand_y)
+        title_y, sub_y = _lockup_tops(self.display, self._font(15), HEADER)
+        pen.text((88, title_y), _BRAND_TITLE, font=self.display, fill=rgb('text'))
+        pen.text((88, sub_y), _BRAND_SUB, font=self._font(15), fill=rgb('text2'))
         cam, label, fill, ink, dot = header['camera']
         self._pill(pen, cam, fill, label, ink, dot=dot)
-        fps_x, fps_label = header['fps']
-        pen.text((fps_x, 44), fps_label, font=self._font(15), fill=rgb('text2'), anchor='lm')
+        fps_x, fps_label, fps_y = header['fps']
+        pen.text((fps_x, fps_y), fps_label, font=self._font(15), fill=rgb('text2'), anchor='lm')
         audio_box, audio, muted = header['audio']
         if muted:
             self._pill(pen, audio_box, 'warning', audio, 'on_accent')

@@ -18,8 +18,9 @@ WINDOW_TITLE = 'AirGuitar Vision'
 
 CANVAS_W, CANVAS_H = 1440, 900
 
-# xywh
-HEADER = (24, 16, 1392, 56)
+# xywh. 64px tall: a 28px title plus a 15px subtitle need an 8px gap
+# between descenders and ascenders, and the bar still ends 8px above the hero.
+HEADER = (24, 16, 1392, 64)
 HERO = (24, 88, 952, 644)
 STRIP = (24, 748, 952, 128)
 # 24px between rail cards. The chord card gives up empty space under its
